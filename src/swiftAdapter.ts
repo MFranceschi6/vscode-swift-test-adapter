@@ -151,7 +151,6 @@ export class SwiftAdapter implements TestAdapter {
                     setTimeout(() => resolve(suite), 1000)
                     
                 }
-                this.log.debug('here')
                 const children = Object.keys(packages).map(targetName => {
                     const target = packages[targetName] as TargetInfo
                     const children = Object.keys(target.childrens).map(className => {
@@ -203,9 +202,7 @@ export class SwiftAdapter implements TestAdapter {
         this.testsEmitter.fire({type: 'started'})
         const suite = await this.loadSuite();
         this.targets = suite.children.map(child => child.id)
-        this.log.debug(suite)
         const event: TestLoadFinishedEvent = {type: 'finished', suite: suite.errored ? undefined : suite, errorMessage: suite.errored ? suite.message : undefined}
-        this.log.debug(event)
         this.testsEmitter.fire(event)
         this.retireEmitter.fire({})
         this.loading = false
@@ -220,7 +217,6 @@ export class SwiftAdapter implements TestAdapter {
     private getEvent(testRunId: string, type: 'suite' | 'test', name: string, line: string, decorations?: TestDecoration[]): TestSuiteEvent | TestEvent {
         const secondPortion = line.substring(line.lastIndexOf("'") + 1).trim()
         const tokens = secondPortion.split(' ')
-        this.log.debug(tokens)
         if(tokens[0] == 'started') {
             switch (type) {
                 case 'suite': {
@@ -272,7 +268,6 @@ export class SwiftAdapter implements TestAdapter {
                 }
             }
             case 'test': {
-                this.log.debug(decorations)
                 return {
                     type: 'test',
                     state: 'failed',
@@ -293,7 +288,6 @@ export class SwiftAdapter implements TestAdapter {
         else if(name == 'Selected tests')      event = this.getEvent(testRunId, 'suite', test.substring(0, test.indexOf('.')), line) as TestSuiteEvent
         else if(name.indexOf('.xctest') == -1) event = this.getEvent(testRunId, 'suite', realName, line) as TestSuiteEvent
         else return undefined
-        this.log.debug(event)
         if(event.state == 'completed') {
             return event
         }
@@ -306,7 +300,6 @@ export class SwiftAdapter implements TestAdapter {
         let event: TestEvent
         let realName = test.indexOf('.') == -1 ? `${test}.${name.replace('.', '/')}` : test.indexOf('/') == -1 ? `${test.substring(0, test.indexOf('.'))}.${name.replace('.', '/')}` : test
         event = this.getEvent(testRunId, 'test', realName, line, decorations) as TestEvent
-        this.log.debug(event)
         this.testStatesEmitter.fire(event)
         if(event.state == 'passed' || event.state == 'failed')
             return true
@@ -339,7 +332,6 @@ export class SwiftAdapter implements TestAdapter {
             const lines = data.toString().split('\n')
             for(let i in lines) {
                 const line = lines[i]
-                this.log.info(line)
                 if(nextLineIsTestSuiteStats) {
                     nextLineIsTestSuiteStats = false;
                     event!.tooltip = line.trim()
@@ -358,6 +350,7 @@ export class SwiftAdapter implements TestAdapter {
                     }
                 }
                 else {
+                    if(!/\t Executed [\d]+ test, with [\d]+ failures \([\d]+ unexpected\) in /.test(line)) this.log.info(line)
                     const decoration = this.tryParseDecoration(testRunId, line, currentOutPutLines)
                     if(decoration) {
                         if(currentDecorators) currentDecorators.push(decoration)

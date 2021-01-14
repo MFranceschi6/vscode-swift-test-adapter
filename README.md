@@ -4,8 +4,11 @@ This extension for [Text Explorer UI](https://marketplace.visualstudio.com/items
 
 ## Features
 
- * Reload test lists if is a test file changes (_Configurable_)
- * Run single test or class or target instead of `swift test` everything everytime
+ * Reload test lists on save if a test file changes (_Configurable_)
+ * Run single test or all tests in a class or all test in a target instead of `swift test` everything everytime
+ * Detects test file location and line
+ * Highlights test failed lines with output
+ * Prints test run output
 
 ![Screenshot1](img/screenshot.png)
 

@@ -2,6 +2,12 @@
 
 All changes to this project will be annotated here
 
+## 1.0.4 - 2020-01-14
+
+### Refactor
+* Removed debug logs from extension
+* Logs the output of tests during execution
+
 ## 1.0.3 - 2020-01-14
 
 ### Update
