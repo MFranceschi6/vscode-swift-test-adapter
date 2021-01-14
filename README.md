@@ -1,6 +1,6 @@
 # Swift Test Adapter for Visual Studio Code
 
-This extension for [Text Explorer UI](https://marketplace.visualstudio.com/items?itemName=hbenl.vscode-test-explorer) add test capabilities to swift under Linux
+This extension for [Text Explorer UI](https://marketplace.visualstudio.com/items?itemName=hbenl.vscode-test-explorer) add ide test capabilities with swift SPM in VSCode
 
 ## Features
 
@@ -13,7 +13,7 @@ This extension for [Text Explorer UI](https://marketplace.visualstudio.com/items
 
  * Debugger... which is actually missing from Linux
  * AutoRun
- * Parallel tests
+ * Parallel tests (but not likelly at this moment)
  * Code Coverage
 
 ## Support
