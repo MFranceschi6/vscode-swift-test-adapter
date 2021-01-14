@@ -2,6 +2,11 @@
 
 All changes to this project will be annotated here
 
+## 1.0.3 - 2020-01-14
+
+### Update
+* Extension tries to detect if is inside a swift package project
+
 ## 1.0.2 - 2020-01-14
 
 ### Update
