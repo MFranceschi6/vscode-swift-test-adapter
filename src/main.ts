@@ -7,6 +7,14 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	const workspaceFolder = (vscode.workspace.workspaceFolders || [])[0];
 
+	const directory = await vscode.workspace.fs.readDirectory(workspaceFolder.uri)
+	
+	if(!directory.find((([name, type]) => {
+		if(name === "Package.swift") return true
+		return false
+	}))) {
+		return
+	}
 	// create a simple logger that can be configured with the configuration variables
 	const log = new Log('swiftTest.swift', workspaceFolder, 'Swift Explorer Log');
 	context.subscriptions.push(log);
