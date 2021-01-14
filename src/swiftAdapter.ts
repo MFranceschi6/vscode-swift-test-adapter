@@ -5,6 +5,7 @@ import { ChildProcess, spawn } from 'child_process'
 import { TargetInfo } from './TestSuiteParse';
 import { v4 } from 'uuid'
 import { parse } from 'path';
+import { grep } from './fsUtils'
 
 const basePath = 'swiftTest.swift'
 
@@ -53,11 +54,14 @@ export class SwiftAdapter implements TestAdapter {
             this.registerForEvents()
     }
 
-    private isTestLine(line: string): number {
-        if(line.startsWith('/')) return 1
-        if(line.startsWith('[')) return 0
-        if(line == '') return 0
-        return -1
+    private isTestLine(line: string): boolean {
+        if(line.startsWith('/')) return false
+        else if(line.startsWith('[')) return false
+        else if(/^\s*\^/.test(line)) return false
+        else if(/^\s/.test(line)) return false
+        else if(line == '') return false
+        else if(/^(Fetching|Cloning|Resolving) (https:\/\/|http:\/\/|git@)/.test(line)) return false
+        return true
     }
 
     private async loadSuite(): Promise<TestSuiteInfo> {
@@ -77,27 +81,17 @@ export class SwiftAdapter implements TestAdapter {
         }
 
         const packages: { [key: string]: TargetInfo | undefined } = {};
-        let skipNext = 0;
         const stderr: string[] = []
         loadingProcess.stdout.on('data', (data: Buffer) => {
             let lines = data.toString('utf8').split('\n')
             for(let i in lines) {
                 setImmediate(() => {
                     const line = lines[i]
-                    this.log.debug(line)
-                    if (skipNext > 0) {
-                        skipNext--;
+                    this.log.info(line)
+                    const action = this.isTestLine(line)
+                    if(!action) {
                         stderr.push(line)
                         return
-                    }
-                    const action = this.isTestLine(line)
-                    if (action == 1) {
-                        stderr.push(line)
-                        skipNext = 2;
-                        return;
-                    }
-                    if (action == 0) {
-                        return;
                     }
                     let tokens = line.split('.')
                     const targetName = tokens[0]
@@ -162,52 +156,22 @@ export class SwiftAdapter implements TestAdapter {
                     const target = packages[targetName] as TargetInfo
                     const children = Object.keys(target.childrens).map(className => {
                         const classDef = target.childrens[className]
-                        this.log.debug(`grep -r -e \\"class[[:blank:]]\\+${className}[[:blank:]]*:[[:blank:]]*XCTestCase[[:blank:]]*{\\" Tests/${targetName} | cut -f1 -d:`)
-                        const grepFileName = spawn('grep', ['-r', '-e', `class[[:blank:]]\\+${className}[[:blank:]]*:[[:blank:]]*XCTestCase[[:blank:]]*{`, `Tests/${targetName}`], {cwd: this.workspace.uri.fsPath})
-                        const fileNameProcess = spawn('cut', ['-f1', '-d:'])
-                        grepFileName.stdout.pipe(fileNameProcess.stdin)
-                        let fileName: string = ''
-                        fileNameProcess.stdout.on('data', (data: Buffer) => {
-                            this.log.debug(data.toString())
-                            fileName = data.toString('utf8').replace('\n', '')
-                        })
-                        return new Promise<TestSuiteInfo>(resolve => {
-                            fileNameProcess.on('exit', (code) => {
-                                this.log.debug(code)
-                                let classLine: number = 0
-                                const grepProcess = spawn('grep', ['-n', '-e', `class[[:blank:]]\\+${className}[[:blank:]]*:[[:blank:]]*XCTestCase[[:blank:]]*{`, fileName], {cwd: this.workspace.uri.fsPath})
-                                const classLineProcess = spawn('cut', ['-f1', '-d:'])
-                                grepProcess.stdout.pipe(classLineProcess.stdin)
-                                classLineProcess.stdout.on('data', (data: Buffer) => {
-                                    this.log.debug(data.toString())
-                                    classLine = parseInt(data.toString('utf8')) - 1
-                                })
-                                classLineProcess.on('exit', (code) => {
-                                    this.log.debug(code)
-                                    classDef.file = `${this.workspace.uri.path}/${fileName}`
-                                    classDef.line = classLine
-                                    this.log.debug(classDef.line)
-                                    const promises = classDef.children.map(child => {
-                                        child.file = `${this.workspace.uri.path}/${fileName}`
-                                        let testLine: number = 0
-                                        const grepProcess = spawn('grep', ['-n', '-e', `func[[:blank:]]\\+${child.label}[[:blank:]]*(`, fileName], {cwd: this.workspace.uri.fsPath})
-                                        const testLineProcess = spawn('cut', ['-f1', '-d:'])
-                                        grepProcess.stdout.pipe(testLineProcess.stdin)
-                                        testLineProcess.stdout.on('data', (data: Buffer) => {
-                                            this.log.debug(data.toString())
-                                            testLine = parseInt(data.toString('utf8')) - 1
-                                        })
-                                        return new Promise<null>(res => {
-                                            testLineProcess.on('exit', () => {
-                                                child.line = testLine
-                                                this.log.debug(child.line)
-                                                res(null)
-                                            })
-                                        })
-                                    })
-                                    Promise.all(promises).then(() => resolve(classDef))
-                                })
-                            })
+                        const regex = `class[\\s]+${className}[\\s]*:[\\s]*XCTestCase[\\s]*{`
+                        return grep(RegExp(regex), `${this.workspace.uri.fsPath}/Tests/${targetName}`, true, true)
+                        .then(results => {
+                            const lines = results[0].split(':')
+                            const fileName = lines[0]
+                            const lineNum = parseInt(lines[1]) - 1
+                            classDef.file = fileName
+                            classDef.line = lineNum
+                            return Promise.all(classDef.children.map(child => {
+                                child.file = fileName
+                                const regex = `func[\\s]+${child.label}[\\s]*\\(`
+                                return grep(RegExp(regex), fileName, false, true)
+                                .then(lines => lines[0].split(':')[0])
+                                .then(lineNumber => parseInt(lineNumber) - 1)
+                                .then(lineNum => { child.line = lineNum })
+                            })).then(() => { return classDef })
                         })
                     })
                     return Promise.all(children).then(children => {
@@ -226,7 +190,7 @@ export class SwiftAdapter implements TestAdapter {
                 Promise.all(children).then(children => {
                     suite.children = children
                     resolve(suite)
-                })
+                }).catch(reject => resolve(suite))
             })
         })
     }
