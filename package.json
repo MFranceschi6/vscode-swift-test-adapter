@@ -5,7 +5,7 @@
   "icon": "img/icon.png",
   "author": "MFranceschi6",
   "publisher": "MakeItBetter",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "license": "MIT",
   "homepage": "https://github.com/MFranceschi6/vscode-swift-test-adapter",
   "repository": {
@@ -31,7 +31,7 @@
     "build": "tsc",
     "watch": "tsc -w",
     "rebuild": "npm run clean && npm run build",
-    "package": "vsce package",
+    "package": "vsce package --baseImagesUrl=https://raw.githubusercontent.com/MFranceschi6/vscode-swift-test-adapter/main/",
     "publish": "vsce publish"
   },
   "dependencies": {
