@@ -2,6 +2,10 @@
 
 All changes to this project will be annotated here
 
+## 1.1.1 - 2020-01-17
+
+## Update
+* Readme
 ## 1.1.0 - 2020-01-17
 
 ## Add
