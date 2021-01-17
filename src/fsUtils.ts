@@ -33,3 +33,17 @@ export const grep = (pattern: RegExp, where: string, recursive: boolean = true, 
             return toReturn
         }
     })
+
+export const dataToLines = (handler: (lines: string[]) => void) => {
+    let currentOutput = ""
+    return (data: Buffer) => {
+        currentOutput += data.toString()
+        let lines: string[] = []
+        while(currentOutput.indexOf('\n') != -1) {
+            lines.push(currentOutput.substring(0, currentOutput.indexOf('\n')))
+            currentOutput = currentOutput.substring(currentOutput.indexOf('\n') + 1, currentOutput.length)
+        }
+        if(lines.length != 0)
+            handler(lines)
+    }
+}

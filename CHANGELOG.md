@@ -2,6 +2,23 @@
 
 All changes to this project will be annotated here
 
+## 1.1.0 - 2020-01-17
+
+## Add
+* Possible to enable debug features
+* Launch lldb debugger sessions
+* Possibility to define arguments to pass to the `swift test` commands
+* Screenshot of debug session
+
+## Refactor
+* Reorganization of the code repository
+
+## Update
+* Readme
+
+## Fix
+* Resolved bug in how the output of `swift` command where parsed
+
 ## 1.0.4 - 2020-01-14
 
 ### Refactor
