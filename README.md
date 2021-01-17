@@ -1,7 +1,6 @@
 # Swift Test Adapter for Visual Studio Code
 
 This extension for [Text Explorer UI](https://marketplace.visualstudio.com/items?itemName=hbenl.vscode-test-explorer) add ide test capabilities with swift SPM in VSCode and also integrates with [CodeLLDB](https://marketplace.visualstudio.com/items?itemName=vadimcn.vscode-lldb) to enable debug capabilities but it doesn't depend from it. Install it only if you want to enable debug capabilities
-
 ## Features
 
  * **Debug** on linux
@@ -39,3 +38,5 @@ in the debug console it's actually a problem with the distributed version of `sw
 ## Support
 
 This extension is really new so I suppose bugs will be frequent, feel free to open any [issue](https://github.com/MFranceschi6/vscode-swift-test-adapter/issues) if you find something or you want to propose a new feature
+
+And also I would really appreciate it if you can find 5 minutes to review this extension in the marketplace
