@@ -2,6 +2,12 @@
 
 All changes to this project will be annotated here
 
+
+## 1.1.2 - 2020-01-17
+
+## Fix
+* Package.json package method
+
 ## 1.1.1 - 2020-01-17
 
 ## Update
