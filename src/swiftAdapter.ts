@@ -1,11 +1,11 @@
 import { WorkspaceFolder, Event, EventEmitter, workspace, debug } from 'vscode';
-import { RetireEvent, TestAdapter, TestEvent, TestLoadFinishedEvent, TestLoadStartedEvent, TestRunFinishedEvent, TestRunStartedEvent, TestSuiteEvent, TestSuiteInfo } from 'vscode-test-adapter-api';
+import { RetireEvent, TestAdapter, TestDecoration, TestEvent, TestLoadFinishedEvent, TestLoadStartedEvent, TestRunFinishedEvent, TestRunStartedEvent, TestSuiteEvent, TestSuiteInfo } from 'vscode-test-adapter-api';
 import { Log } from 'vscode-test-adapter-util';
 import { ChildProcess, exec, spawn } from 'child_process' 
 import { TargetInfo } from './TestSuiteParse';
 import { v4 } from 'uuid'
 import { grep } from './fsUtils'
-import { parseSwiftLoadTestOutput, parseSwiftRunOutput } from './swiftUtils'
+import { parseSwiftLoadTestOutput, parseSwiftRunError, parseSwiftRunOutput } from './swiftUtils'
 import { promises } from 'fs';
 
 const basePath = 'swiftTest.swift'
@@ -72,6 +72,20 @@ export class SwiftAdapter implements TestAdapter {
         return args.concat(testParams)
     }
 
+    private async awaitForOutputHandling(handlingData: {count: number}): Promise<void> {
+
+        const awaitImpl = (executor: (value: void | Promise<void>) => void) => {
+            if(handlingData.count != 0) {
+                setTimeout(() => awaitImpl(executor), 1000)
+                return
+            }
+            executor()
+        }
+        return new Promise(resolve => {
+            awaitImpl(resolve)
+        })
+    }
+
     private async loadSuite(): Promise<TestSuiteInfo> {
         let args = [
             'test',
@@ -92,54 +106,57 @@ export class SwiftAdapter implements TestAdapter {
 
         const packages: { [key: string]: TargetInfo | undefined } = {};
         const stderr: string[] = []
-        loadingProcess.stdout.on('data', parseSwiftLoadTestOutput(stderr, this.log, packages))
+        let handlingData = {count: 0 }
+        loadingProcess.stdout.on('data', parseSwiftLoadTestOutput(workspace.getConfiguration(`${basePath}`).get<boolean>('enableDebug') || false, handlingData, stderr, this.log, packages))
         return new Promise((resolve) => {
             loadingProcess.on('exit', (code) => {
                 if(code != 0) {
                     suite.errored = true
                     suite.message = stderr.join('\n')
                     setTimeout(() => resolve(suite), 1000)
-                    
+                    return;
                 }
-                const children = Object.keys(packages).map(targetName => {
-                    const target = packages[targetName] as TargetInfo
-                    const children = Object.keys(target.childrens).map(className => {
-                        const classDef = target.childrens[className]
-                        const regex = `class[\\s]+${className}[\\s]*:[\\s]*XCTestCase[\\s]*{`
-                        return grep(RegExp(regex), `${this.workspace.uri.fsPath}/Tests/${targetName}`, true, true)
-                        .then(results => {
-                            const lines = results[0].split(':')
-                            const fileName = lines[0]
-                            const lineNum = parseInt(lines[1]) - 1
-                            classDef.file = fileName
-                            classDef.line = lineNum
-                            return Promise.all(classDef.children.map(child => {
-                                child.file = fileName
-                                const regex = `func[\\s]+${child.label}[\\s]*\\(`
-                                return grep(RegExp(regex), fileName, false, true)
-                                .then(lines => lines[0].split(':')[0])
-                                .then(lineNumber => parseInt(lineNumber) - 1)
-                                .then(lineNum => { child.line = lineNum })
-                            })).then(() => { return classDef })
+                this.awaitForOutputHandling(handlingData).then(() => {
+                    const children = Object.keys(packages).map(targetName => {
+                        const target = packages[targetName] as TargetInfo
+                        const children = Object.keys(target.childrens).map(className => {
+                            const classDef = target.childrens[className]
+                            const regex = `class[\\s]+${className}[\\s]*:.*{`
+                            return grep(RegExp(regex), `${this.workspace.uri.fsPath}/Tests/${targetName}`, true, true)
+                            .then(results => {
+                                const lines = results[0].split(':')
+                                const fileName = lines[0]
+                                const lineNum = parseInt(lines[1]) - 1
+                                classDef.file = fileName
+                                classDef.line = lineNum
+                                return Promise.all(classDef.children.map(child => {
+                                    child.file = fileName
+                                    const regex = `func[\\s]+${child.label}[\\s]*\\(`
+                                    return grep(RegExp(regex), fileName, false, true)
+                                    .then(lines => lines[0].split(':')[0])
+                                    .then(lineNumber => parseInt(lineNumber) - 1)
+                                    .then(lineNum => { child.line = lineNum })
+                                    .catch(error => this.log.error(error))
+                                })).then(() => { return classDef })
+                            })
+                        })
+                        return Promise.all(children).then(children => {
+                            return <TestSuiteInfo> {
+                                type: 'suite',
+                                id: target.id,
+                                label: target.label,
+                                description: target.description,
+                                tooltip: target.tooltip,
+                                debuggable: false,
+                                children
+                            }
                         })
                     })
-                    return Promise.all(children).then(children => {
-                        return <TestSuiteInfo> {
-                            type: 'suite',
-                            id: target.id,
-                            label: target.label,
-                            description: target.description,
-                            tooltip: target.tooltip,
-                            debuggable: false,
-                            children
-                        }
-                    })
+                    Promise.all(children).then(children => {
+                        suite.children = children
+                        resolve(suite)
+                    }).catch(reject => resolve(suite))
                 })
-
-                Promise.all(children).then(children => {
-                    suite.children = children
-                    resolve(suite)
-                }).catch(reject => resolve(suite))
             })
         })
     }
@@ -169,16 +186,61 @@ export class SwiftAdapter implements TestAdapter {
         process = spawn('swift',
             args, {cwd: this.workspace.uri.fsPath, shell: true})
         this.runningProcesses[test] = process;
-        process.stdout!.on('data', parseSwiftRunOutput(this.testStatesEmitter, testRunId, test, this.log))
-
+        const handlingData = {count: 0}
+        const data: {
+            nextLineIsTestSuiteStats: boolean,
+            event: TestSuiteEvent | undefined,
+            currentOutPutLines: string [] | undefined,
+            currentDecorators: TestDecoration[] | undefined
+        } = {
+            nextLineIsTestSuiteStats: false,
+            event:  undefined,
+            currentOutPutLines: undefined,
+            currentDecorators: undefined
+        }
+        const outputError: {lines: string[], firstLine: string | undefined, file: string | undefined, line: number | undefined} = {
+            lines: [],
+            firstLine: undefined,
+            file: undefined,
+            line: undefined
+        }
+        process.stdout!.on('data', parseSwiftRunOutput(data, handlingData, this.testStatesEmitter, testRunId, test, this.log))
+        process.stderr!.on('data', parseSwiftRunError(outputError))
         return new Promise((resolve) => {
-            process.on('exit', () => {
+            process.on('exit', async (code) => {
+                await this.awaitForOutputHandling(handlingData)
                 delete this.runningProcesses[testRunId]
+                if(code == 1) {
+                    if(test.indexOf('/') != -1)
+                        this.testStatesEmitter.fire(<TestEvent>{
+                            type: 'test',
+                            test,
+                            testRunId,
+                            state: 'errored',
+                            message: outputError.lines.join('\n'),
+                            decorations: [
+                                {
+                                    line: outputError.line,
+                                    file: outputError.file,
+                                    message: outputError.firstLine,
+                                    hover: outputError.lines.join('\n')
+                                }
+                            ]
+                        })
+                    else {
+                        this.testStatesEmitter.fire(<TestSuiteEvent> {
+                            type: 'suite',
+                            suite: test,
+                            testRunId,
+                            state: 'errored',
+                            message: outputError.lines.join('\n')
+                        })
+                    }
+                }
                 resolve()
             })
         })
     }
-
 
     private notAsyncronousFor<T, R>(array: T[], handler: (param: T) => Promise<R>): Promise<R[]> {
         const runner = async (index: number, results: R[]): Promise<R[]> => {
@@ -246,7 +308,18 @@ export class SwiftAdapter implements TestAdapter {
 
     private async parseOutput(testRunId: string, test: string, packageName: string) {
         const file = await open(`${this.workspace.uri.fsPath}/.build/debug/${packageName}testRun`, 'r')
-        const handler = parseSwiftRunOutput(this.testStatesEmitter, testRunId, test, this.log)
+        const data: {
+            nextLineIsTestSuiteStats: boolean,
+            event: TestSuiteEvent | undefined,
+            currentOutPutLines: string [] | undefined,
+            currentDecorators: TestDecoration[] | undefined
+        } = {
+            nextLineIsTestSuiteStats: false,
+            event:  undefined,
+            currentOutPutLines: undefined,
+            currentDecorators: undefined
+        }
+        const handler = parseSwiftRunOutput(data, {count: 0}, this.testStatesEmitter, testRunId, test, this.log)
         await this.parseFileOutput(file, handler)
         this.testStatesEmitter.fire(<TestRunFinishedEvent> { type: 'finished', testRunId })
         await file.close()

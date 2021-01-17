@@ -2,6 +2,13 @@
 
 All changes to this project will be annotated here
 
+## 1.1.3 - 2020-01-17
+
+## Fix
+* Failed to load tests if a test class was not direct subclass of `XCTestCase`
+
+## Update
+* Handle erroneous exit code from tests and correctly display the error messages
 
 ## 1.1.2 - 2020-01-17
 

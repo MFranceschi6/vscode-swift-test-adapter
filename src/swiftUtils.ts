@@ -131,60 +131,65 @@ const tryParseDecoration = (testRunId: string, line: string, outPutLines: string
     return undefined
 }
 
-export const parseSwiftRunOutput = (testStatesEmitter: EventEmitter<TestRunStartedEvent | TestRunFinishedEvent | TestSuiteEvent | TestEvent>, testRunId: string, test: string, log: Log,): (data: Buffer) => void => {
-    let nextLineIsTestSuiteStats = false;
-    let event: TestSuiteEvent | undefined;
-    let currentOutPutLines: string [] | undefined
-    let currentDecorators: TestDecoration[] | undefined
+export const parseSwiftRunOutput = (data: {
+    nextLineIsTestSuiteStats: boolean,
+    event: TestSuiteEvent | undefined,
+    currentOutPutLines: string [] | undefined,
+    currentDecorators: TestDecoration[] | undefined
+}, handlingData: {count: number}, testStatesEmitter: EventEmitter<TestRunStartedEvent | TestRunFinishedEvent | TestSuiteEvent | TestEvent>, testRunId: string, test: string, log: Log,): (data: Buffer) => void => {
     return dataToLines((lines) => {
     for(let i in lines) {
+        handlingData.count++
         const line = lines[i]
-        if(nextLineIsTestSuiteStats) {
-            nextLineIsTestSuiteStats = false;
-            event!.tooltip = line.trim()
-            testStatesEmitter.fire(event!)
+        if(data.nextLineIsTestSuiteStats) {
+            data.nextLineIsTestSuiteStats = false;
+            data.event!.tooltip = line.trim()
+            testStatesEmitter.fire(data.event!)
         }
         if(line.startsWith('Test Suite')) {
-            event = handleTestSuiteMessage(testStatesEmitter, testRunId, line, test)
-            if(event) {
-                nextLineIsTestSuiteStats = true
+            data.event = handleTestSuiteMessage(testStatesEmitter, testRunId, line, test)
+            if(data.event) {
+                data.nextLineIsTestSuiteStats = true
             }
         }
         else if(line.startsWith('Test Case')) {
-            currentOutPutLines = undefined
-            if (handleTestCaseMessage(testStatesEmitter, testRunId, line, test, currentDecorators)) {
-                currentDecorators = undefined
+            data.currentOutPutLines = undefined
+            if (handleTestCaseMessage(testStatesEmitter, testRunId, line, test, data.currentDecorators)) {
+                data.currentDecorators = undefined
             }
         }
         else {
             if(!/\t Executed [\d]+ test, with [\d]+ failures \([\d]+ unexpected\) in /.test(line)) log.info(line)
-            const decoration = tryParseDecoration(testRunId, line, currentOutPutLines)
+            const decoration = tryParseDecoration(testRunId, line, data.currentOutPutLines)
             if(decoration) {
-                if(currentDecorators) currentDecorators.push(decoration)
+                if(data.currentDecorators) data.currentDecorators.push(decoration)
                 else {
-                    currentDecorators = []
-                    currentDecorators.push(decoration)
+                    data.currentDecorators = []
+                    data.currentDecorators.push(decoration)
                 }
             } else {
-                if(currentOutPutLines) currentOutPutLines.push(line)
+                if(data.currentOutPutLines) data.currentOutPutLines.push(line)
                 else {
-                    currentOutPutLines = []
-                    currentOutPutLines.push(line)
+                    data.currentOutPutLines = []
+                    data.currentOutPutLines.push(line)
                 }
             }
         }
+        handlingData.count--
     }
 })
 }
 
-export const parseSwiftLoadTestOutput = (stderr: string[], log: Log, packages: { [key: string]: TargetInfo | undefined }): (data: Buffer) => void => dataToLines((lines) => {
+export const parseSwiftLoadTestOutput = (debuggable: boolean, handlingData: {count: number}, stderr: string[], log: Log, packages: { [key: string]: TargetInfo | undefined }): (data: Buffer) => void => dataToLines((lines) => {
     for(let i in lines) {
+        handlingData.count++
         setImmediate(() => {
             const line = lines[i]
             log.info(line)
             const action = isTestLine(line)
             if(!action) {
                 stderr.push(line)
+                handlingData.count--
                 return
             }
             let tokens = line.split('.')
@@ -230,9 +235,29 @@ export const parseSwiftLoadTestOutput = (stderr: string[], log: Log, packages: {
                 label: testName,
                 description: `Test Case ${testName}`,
                 tooltip: `Test Case ${testName}`,
-                debuggable: true
+                debuggable
             }
             cl.children.push(testCase)
+            handlingData.count--
         })
     }
-    })
+})
+
+
+const parseFirstLine = (line: string): {info: string, file: string, line: number } => {
+    const tokens = line.split(':')
+    const info = tokens[tokens.length - 1].trim()
+    const file = info.split(' ')[1]
+    const lineNum = parseInt(info.split(' ')[3]) - 1
+    return {info: tokens.splice(0, tokens.length - 1).join(':'), file, line: lineNum}
+}
+
+export const parseSwiftRunError = (data: {lines: string[], firstLine: string | undefined, file: string | undefined, line: number | undefined }): (data: Buffer) => void => dataToLines((lines) => {
+    if(data.lines.length == 0) {
+        const {info, file, line} = parseFirstLine(lines[0])
+        data.firstLine = info
+        data.file = file
+        data.line = line
+    }
+    data.lines = data.lines.concat(lines)
+})
