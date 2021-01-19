@@ -6,7 +6,7 @@ import { EventEmitter } from 'vscode';
 import { parse } from 'path';
 
 
-const isTestLine = (line: string): boolean => {
+const isNotBuildLine = (line: string): boolean => {
     if(line.startsWith('/')) return false
     else if(line.startsWith('[')) return false
     else if(/^\s*\^/.test(line)) return false
@@ -103,11 +103,12 @@ const handleTestSuiteMessage = (testStatesEmitter: EventEmitter<TestRunStartedEv
     return undefined
 }
 
-const handleTestCaseMessage = (testStatesEmitter: EventEmitter<TestRunStartedEvent | TestRunFinishedEvent | TestSuiteEvent | TestEvent>, testRunId: string, line: string, test: string, decorations?: TestDecoration[]): boolean => {
+const handleTestCaseMessage = (testStatesEmitter: EventEmitter<TestRunStartedEvent | TestRunFinishedEvent | TestSuiteEvent | TestEvent>, testRunId: string, line: string, test: string, decorations?: TestDecoration[], currentOutpuLines?: string[]): boolean => {
     const name = getName(line)
     let event: TestEvent
     let realName = test.indexOf('.') == -1 ? `${test}.${name.replace('.', '/')}` : test.indexOf('/') == -1 ? `${test.substring(0, test.indexOf('.'))}.${name.replace('.', '/')}` : test
     event = getEvent(testRunId, 'test', realName, line, decorations) as TestEvent
+    event.message = currentOutpuLines?.join('\n')
     testStatesEmitter.fire(event)
     if(event.state == 'passed' || event.state == 'failed')
         return true
@@ -120,11 +121,14 @@ const tryParseDecoration = (testRunId: string, line: string, outPutLines: string
         if(parsed.ext != '.swift') return undefined
         const lineWithoutPath = line.substring(line.indexOf(':') + 1)
         const lineNum = parseInt(lineWithoutPath.substring(0, lineWithoutPath.indexOf(':'))) - 1
+        const tokens = lineWithoutPath.split(':')
+        const message = `${tokens[1]}: ${tokens[3]}`
+        const hover = tokens.splice(4).join(':')
         if(isNaN(lineNum)) return undefined
         return {
             line: lineNum,
-            message: lineWithoutPath.substring(lineWithoutPath.indexOf(':') + 1),
-            hover: outPutLines ? outPutLines.join('\n') : undefined,
+            message,
+            hover,
             file: line.substring(0, line.indexOf(':'))
         }
     }
@@ -135,27 +139,29 @@ export const parseSwiftRunOutput = (data: {
     nextLineIsTestSuiteStats: boolean,
     event: TestSuiteEvent | undefined,
     currentOutPutLines: string [] | undefined,
+    lastLine: string,
     currentDecorators: TestDecoration[] | undefined
 }, handlingData: {count: number}, testStatesEmitter: EventEmitter<TestRunStartedEvent | TestRunFinishedEvent | TestSuiteEvent | TestEvent>, testRunId: string, test: string, log: Log,): (data: Buffer) => void => {
     return dataToLines((lines) => {
     for(let i in lines) {
         handlingData.count++
         const line = lines[i]
+        data.lastLine = line
         if(data.nextLineIsTestSuiteStats) {
             data.nextLineIsTestSuiteStats = false;
             data.event!.tooltip = line.trim()
             testStatesEmitter.fire(data.event!)
         }
-        if(line.startsWith('Test Suite')) {
+        else if(line.startsWith('Test Suite')) {
             data.event = handleTestSuiteMessage(testStatesEmitter, testRunId, line, test)
             if(data.event) {
                 data.nextLineIsTestSuiteStats = true
             }
         }
         else if(line.startsWith('Test Case')) {
-            data.currentOutPutLines = undefined
-            if (handleTestCaseMessage(testStatesEmitter, testRunId, line, test, data.currentDecorators)) {
+            if (handleTestCaseMessage(testStatesEmitter, testRunId, line, test, data.currentDecorators, data.currentOutPutLines)) {
                 data.currentDecorators = undefined
+                data.currentOutPutLines = undefined
             }
         }
         else {
@@ -168,10 +174,12 @@ export const parseSwiftRunOutput = (data: {
                     data.currentDecorators.push(decoration)
                 }
             } else {
-                if(data.currentOutPutLines) data.currentOutPutLines.push(line)
-                else {
-                    data.currentOutPutLines = []
-                    data.currentOutPutLines.push(line)
+                if(isNotBuildLine(line)) {
+                    if(data.currentOutPutLines) data.currentOutPutLines.push(line)
+                    else {
+                        data.currentOutPutLines = []
+                        data.currentOutPutLines.push(line)
+                    }
                 }
             }
         }
@@ -186,7 +194,7 @@ export const parseSwiftLoadTestOutput = (debuggable: boolean, handlingData: {cou
         setImmediate(() => {
             const line = lines[i]
             log.info(line)
-            const action = isTestLine(line)
+            const action = isNotBuildLine(line)
             if(!action) {
                 stderr.push(line)
                 handlingData.count--

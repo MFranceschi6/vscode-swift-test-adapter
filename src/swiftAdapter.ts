@@ -191,12 +191,14 @@ export class SwiftAdapter implements TestAdapter {
             nextLineIsTestSuiteStats: boolean,
             event: TestSuiteEvent | undefined,
             currentOutPutLines: string [] | undefined,
-            currentDecorators: TestDecoration[] | undefined
+            currentDecorators: TestDecoration[] | undefined,
+            lastLine: string
         } = {
             nextLineIsTestSuiteStats: false,
             event:  undefined,
             currentOutPutLines: undefined,
-            currentDecorators: undefined
+            currentDecorators: undefined,
+            lastLine: ""
         }
         const outputError: {lines: string[], firstLine: string | undefined, file: string | undefined, line: number | undefined} = {
             lines: [],
@@ -211,30 +213,32 @@ export class SwiftAdapter implements TestAdapter {
                 await this.awaitForOutputHandling(handlingData)
                 delete this.runningProcesses[testRunId]
                 if(code == 1) {
-                    if(test.indexOf('/') != -1)
-                        this.testStatesEmitter.fire(<TestEvent>{
-                            type: 'test',
-                            test,
-                            testRunId,
-                            state: 'errored',
-                            message: outputError.lines.join('\n'),
-                            decorations: [
-                                {
-                                    line: outputError.line,
-                                    file: outputError.file,
-                                    message: outputError.firstLine,
-                                    hover: outputError.lines.join('\n')
-                                }
-                            ]
-                        })
-                    else {
-                        this.testStatesEmitter.fire(<TestSuiteEvent> {
-                            type: 'suite',
-                            suite: test,
-                            testRunId,
-                            state: 'errored',
-                            message: outputError.lines.join('\n')
-                        })
+                    if(data.lastLine == 'Exited with signal code 4') {
+                        if(test.indexOf('/') != -1)
+                            this.testStatesEmitter.fire(<TestEvent>{
+                                type: 'test',
+                                test,
+                                testRunId,
+                                state: 'errored',
+                                message: outputError.lines.join('\n'),
+                                decorations: [
+                                    {
+                                        line: outputError.line,
+                                        file: outputError.file,
+                                        message: outputError.firstLine,
+                                        hover: outputError.lines.join('\n')
+                                    }
+                                ]
+                            })
+                        else {
+                            this.testStatesEmitter.fire(<TestSuiteEvent> {
+                                type: 'suite',
+                                suite: test,
+                                testRunId,
+                                state: 'errored',
+                                message: outputError.lines.join('\n')
+                            })
+                        }
                     }
                 }
                 resolve()
@@ -312,12 +316,14 @@ export class SwiftAdapter implements TestAdapter {
             nextLineIsTestSuiteStats: boolean,
             event: TestSuiteEvent | undefined,
             currentOutPutLines: string [] | undefined,
-            currentDecorators: TestDecoration[] | undefined
+            currentDecorators: TestDecoration[] | undefined,
+            lastLine: string
         } = {
             nextLineIsTestSuiteStats: false,
             event:  undefined,
             currentOutPutLines: undefined,
-            currentDecorators: undefined
+            currentDecorators: undefined,
+            lastLine: ""
         }
         const handler = parseSwiftRunOutput(data, {count: 0}, this.testStatesEmitter, testRunId, test, this.log)
         await this.parseFileOutput(file, handler)

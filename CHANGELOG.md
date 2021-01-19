@@ -2,6 +2,11 @@
 
 All changes to this project will be annotated here
 
+## 1.1.4 2020-01-19
+
+## Update
+* Improved how the logs and error messages of tests are shown
+
 ## 1.1.3 - 2020-01-17
 
 ## Fix
