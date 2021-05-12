@@ -7,14 +7,14 @@ import { parse } from 'path';
 
 
 const isNotBuildLine = (line: string): boolean => {
-    if(line.startsWith('/')) return false
-    else if(line.startsWith('[')) return false
-    else if(/^\s*\^/.test(line)) return false
-    else if(/^\s/.test(line)) return false
-    else if(line == '') return false
+    if(line.startsWith('/'))                                                        return false
+    else if(line.startsWith('['))                                                   return false
+    else if(/^\s*\^/.test(line))                                                    return false
+    else if(/^\s/.test(line))                                                       return false
+    else if(line == '')                                                             return false
     else if(/^(Fetching|Cloning|Resolving) (https:\/\/|http:\/\/|git@)/.test(line)) return false
-    else if("* Build Completed!" == line) return false
-    return true
+    else if("* Build Completed!" == line)                                           return false
+    else                                                                            return /[^%]{1,}\.[^%]{1,}\/[^%]{1,}/.test(line)
 }
 
 const getName = (line: string): string => {
@@ -193,12 +193,12 @@ export const parseSwiftLoadTestOutput = (debuggable: boolean, handlingData: {cou
     for(let i in lines) {
         handlingData.count++
         setImmediate(() => {
+            handlingData.count--
             const line = lines[i]
             log.info(line)
             const action = isNotBuildLine(line)
             if(!action) {
                 stderr.push(line)
-                handlingData.count--
                 return
             }
             let tokens = line.split('.')
@@ -247,7 +247,6 @@ export const parseSwiftLoadTestOutput = (debuggable: boolean, handlingData: {cou
                 debuggable
             }
             cl.children.push(testCase)
-            handlingData.count--
         })
     }
 })

@@ -139,21 +139,30 @@ export class SwiftAdapter implements TestAdapter {
                                     .catch(error => this.log.error(error))
                                 })).then(() => { return classDef })
                             })
+                            .catch(reason => {
+                                this.log.debug(reason)
+                                return null
+                            })
                         })
-                        return Promise.all(children).then(children => {
-                            return <TestSuiteInfo> {
-                                type: 'suite',
-                                id: target.id,
-                                label: target.label,
-                                description: target.description,
-                                tooltip: target.tooltip,
-                                debuggable: false,
-                                children
-                            }
+                        return Promise.all(children).then(childrens => {
+                                const children = childrens.filter(child => child != null)
+                                if (children.length != 0) {
+                                    return <TestSuiteInfo> {
+                                        type: 'suite',
+                                        id: target.id,
+                                        label: target.label,
+                                        description: target.description,
+                                        tooltip: target.tooltip,
+                                        debuggable: false,
+                                        children
+                                    }
+                                }
+                                return null
                         })
                     })
                     Promise.all(children).then(children => {
-                        suite.children = children
+                        const child = children.filter(child => child != null) as TestSuiteInfo[]
+                        suite.children = child
                         resolve(suite)
                     }).catch(reject => resolve(suite))
                 })
