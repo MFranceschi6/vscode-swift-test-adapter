@@ -2,6 +2,16 @@
 
 All changes to this project will be annotated here
 
+## 1.1.7 2021-05-12
+
+## Update
+* Readme with Known Issues
+
+## 1.1.6 2021-05-12
+
+## Fix
+* Loading of tests when loading a project which is building from zero
+
 ## 1.1.5 2021-05-12
 
 ## Fix
