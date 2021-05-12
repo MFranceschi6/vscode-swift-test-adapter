@@ -2,12 +2,22 @@
 
 All changes to this project will be annotated here
 
-## 1.1.4 2020-01-19
+## 1.1.5 2021-05-12
+
+## Fix
+* Compatibility with swift 5.4
+
+## Update
+* Readme with example of how to set up the debugger
+* Year of dates inside changelog 😅
+* Package json dependencies
+
+## 1.1.4 2021-01-19
 
 ## Update
 * Improved how the logs and error messages of tests are shown
 
-## 1.1.3 - 2020-01-17
+## 1.1.3 - 2021-01-17
 
 ## Fix
 * Failed to load tests if a test class was not direct subclass of `XCTestCase`
@@ -15,16 +25,16 @@ All changes to this project will be annotated here
 ## Update
 * Handle erroneous exit code from tests and correctly display the error messages
 
-## 1.1.2 - 2020-01-17
+## 1.1.2 - 2021-01-17
 
 ## Fix
 * Package.json package method
 
-## 1.1.1 - 2020-01-17
+## 1.1.1 - 2021-01-17
 
 ## Update
 * Readme
-## 1.1.0 - 2020-01-17
+## 1.1.0 - 2021-01-17
 
 ## Add
 * Possible to enable debug features
@@ -41,18 +51,18 @@ All changes to this project will be annotated here
 ## Fix
 * Resolved bug in how the output of `swift` command where parsed
 
-## 1.0.4 - 2020-01-14
+## 1.0.4 - 2021-01-14
 
 ### Refactor
 * Removed debug logs from extension
 * Logs the output of tests during execution
 
-## 1.0.3 - 2020-01-14
+## 1.0.3 - 2021-01-14
 
 ### Update
 * Extension tries to detect if is inside a swift package project
 
-## 1.0.2 - 2020-01-14
+## 1.0.2 - 2021-01-14
 
 ### Update
 * Readme
@@ -64,7 +74,7 @@ All changes to this project will be annotated here
 ### Fixed
 * Now it should parse the output of `swift build` better to identify tests in case of a full build (fetching and cloning)
 
-## 1.0.1 - 2020-01-14
+## 1.0.1 - 2021-01-14
 
 ### Fixed
 * Screenshot not showing in the extension Marketplace
