@@ -29,7 +29,16 @@ Example of run tests
 ## Debug
 As already mentioned this extension is capable to debug code integrating with the **CodeLLDB** extension. You can reference their [user manual](https://github.com/vadimcn/vscode-lldb/blob/master/MANUAL.md#alternate-lldb-backends) on how to set up the correct liblldb path for the extension to work, then it should work out of the box when selecting the test case to debug.
 
+For instance I've my swift toolchain inside `/swift-toolchain/` directory and I've set the lldb backends to `/swift-toolchain/usr/lib/liblldb.so`
+
+
+### Errors
 If you see an error like this
+```
+This version of LLDB has no plugin for the swift language. Inspection of frame variables will be limited.
+```
+while running a debug session you probably didn't properly set the correct `liblldb.so`
+
 ```
 Could not initialize Python interpreter - some features will be unavailable (e.g. debug visualizers).
 ```
