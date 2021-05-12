@@ -13,6 +13,7 @@ const isNotBuildLine = (line: string): boolean => {
     else if(/^\s/.test(line)) return false
     else if(line == '') return false
     else if(/^(Fetching|Cloning|Resolving) (https:\/\/|http:\/\/|git@)/.test(line)) return false
+    else if("* Build Completed!" == line) return false
     return true
 }
 
