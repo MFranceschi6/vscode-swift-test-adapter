@@ -123,6 +123,7 @@ export class SwiftAdapter implements TestAdapter {
                             const classDef = target.childrens[className]
                             const regex = `class[\\s]+${className}[\\s]*:.*{`
                             return grep(RegExp(regex), `${this.workspace.uri.fsPath}/Tests/${targetName}`, true, true)
+                            .catch(() => grep(RegExp(regex), `${this.workspace.uri.fsPath}/Sources/${targetName}`, true, true))
                             .then(results => {
                                 const lines = results[0].split(':')
                                 const fileName = lines[0]
