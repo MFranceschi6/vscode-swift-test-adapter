@@ -2,6 +2,11 @@
 
 All changes to this project will be annotated here
 
+## 1.1.9 2021-06-4
+
+## Fix
+* Now it doesn't assume the tests to be inside the `Tests/` directory
+
 ## 1.1.7 2021-05-12
 
 ## Update
