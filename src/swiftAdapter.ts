@@ -308,7 +308,7 @@ export class SwiftAdapter implements TestAdapter {
                 request: 'launch',
                 type: 'lldb',
                 terminal: 'integrated',
-                stdio: [null, `${this.workspace.uri.fsPath}/.build/debug/${packageName}testRun`, null],
+                stdio: [null, `${this.workspace.uri.fsPath}/.build/debug/${packageName}testRun`, getPlatform() == Platform.linux ? null : `${this.workspace.uri.fsPath}/.build/debug/${packageName}testRun`],
                 program: `${this.workspace.uri.fsPath}/.build/debug/${packageName}PackageTests.xctest`,
                 args: [tests[0]],
             }).then(async () => {
