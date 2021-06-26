@@ -2,6 +2,11 @@
 
 All changes to this project will be annotated here
 
+## 1.1.10 2021-06-26
+
+## Add
+* Support for macOS different output of the swift test command
+
 ## 1.1.9 2021-06-4
 
 ## Fix
