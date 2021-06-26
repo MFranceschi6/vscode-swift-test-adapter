@@ -1,16 +1,16 @@
-import { WorkspaceFolder, Event, EventEmitter, workspace, debug } from 'vscode';
+import { ChildProcess, exec, spawn } from 'child_process';
+import { promises } from 'fs';
+import { v4 } from 'uuid';
+import { debug, Event, EventEmitter, workspace, WorkspaceFolder } from 'vscode';
 import { RetireEvent, TestAdapter, TestDecoration, TestEvent, TestLoadFinishedEvent, TestLoadStartedEvent, TestRunFinishedEvent, TestRunStartedEvent, TestSuiteEvent, TestSuiteInfo } from 'vscode-test-adapter-api';
 import { Log } from 'vscode-test-adapter-util';
-import { ChildProcess, exec, spawn } from 'child_process' 
+import { grep } from './fsUtils';
+import { parseSwiftLoadTestOutput, parseSwiftRunError, parseSwiftRunOutput } from './swiftUtils';
 import { TargetInfo } from './TestSuiteParse';
-import { v4 } from 'uuid'
-import { grep } from './fsUtils'
-import { parseSwiftLoadTestOutput, parseSwiftRunError, parseSwiftRunOutput } from './swiftUtils'
-import { promises } from 'fs';
+import { getPlatform, Platform } from './utils';
 
 const basePath = 'swiftTest.swift'
 const open = promises.open
-
 export class SwiftAdapter implements TestAdapter {
 
     private disposables: { dispose(): void }[] = [];
@@ -216,8 +216,13 @@ export class SwiftAdapter implements TestAdapter {
             file: undefined,
             line: undefined
         }
-        process.stdout!.on('data', parseSwiftRunOutput(data, handlingData, this.testStatesEmitter, testRunId, test, this.log))
-        process.stderr!.on('data', parseSwiftRunError(outputError))
+        
+        if (getPlatform() == Platform.linux) {
+            process.stdout!.on('data', parseSwiftRunOutput(data, handlingData, this.testStatesEmitter, testRunId, test, this.log))
+            process.stderr!.on('data', parseSwiftRunError(outputError))
+        } else {
+            process.stderr!.on('data', parseSwiftRunOutput(data, handlingData, this.testStatesEmitter, testRunId, test, this.log))
+        }
         return new Promise((resolve) => {
             process.on('exit', async (code) => {
                 await this.awaitForOutputHandling(handlingData)
