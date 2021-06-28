@@ -4,6 +4,7 @@ import { dataToLines } from './fsUtils'
 import { TestDecoration, TestEvent, TestInfo, TestRunFinishedEvent, TestRunStartedEvent, TestSuiteEvent, TestSuiteInfo } from 'vscode-test-adapter-api';
 import { EventEmitter } from 'vscode';
 import { parse } from 'path';
+import { getPlatform, Platform } from './utils';
 
 
 const isNotBuildLine = (line: string): boolean => {
@@ -17,10 +18,20 @@ const isNotBuildLine = (line: string): boolean => {
     else                                                                            return /[^%]{1,}\.[^%]{1,}\/[^%]{1,}/.test(line)
 }
 
-const getName = (line: string): string => {
+export const getName = (line: string): string => {
     const first = line.indexOf("'")
     const last = line.lastIndexOf("'")
-    return line.substring(first+1, last)
+    const name = line.substring(first+1, last)
+    if (getPlatform() == Platform.mac) {
+        if (name.startsWith('-[') && name.endsWith(']')) {
+            const pointIndex = name.indexOf('.')
+            const spaceIndex = name.indexOf(' ')
+            const className = name.substring(pointIndex+1, spaceIndex)
+            const testName = name.substring(spaceIndex + 1, name.length - 1)
+            return `${className}.${testName}`
+        }
+    }
+    return name
 }
 
 const getEvent = (testRunId: string, type: 'suite' | 'test', name: string, line: string, decorations?: TestDecoration[]): TestSuiteEvent | TestEvent => {
