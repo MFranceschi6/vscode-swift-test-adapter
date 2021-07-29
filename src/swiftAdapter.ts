@@ -25,6 +25,7 @@ export class SwiftAdapter implements TestAdapter {
 	private readonly testStatesEmitter = new EventEmitter<TestRunStartedEvent | TestRunFinishedEvent | TestSuiteEvent | TestEvent>();
     private readonly autorunEmitter = new EventEmitter<void>();
     private readonly retireEmitter = new EventEmitter<RetireEvent>();
+    private preTestTask: string | null = null;
 
 
 	get tests(): Event<TestLoadStartedEvent | TestLoadFinishedEvent> { return this.testsEmitter.event; }
@@ -96,6 +97,7 @@ export class SwiftAdapter implements TestAdapter {
             '-l'
         ]
         args = args.concat(this.loadArgs())
+        this.preTestTask = workspace.getConfiguration(`${basePath}`).get<string | null>('preTestTask') || null
         const loadingProcess = spawn('swift', args, {cwd: this.workspace.uri.fsPath})
         const suite: TestSuiteInfo = {
             type: 'suite',
@@ -328,6 +330,7 @@ export class SwiftAdapter implements TestAdapter {
                 stdio: [null, null, getPlatform() == Platform.linux ? null : `${this.workspace.uri.fsPath}/.build/debug/${packageName}testRun`],
                 program: program,
                 args: args,
+                preLaunchTask: this.preTestTask
             }).then(async () => {
                 this.testStatesEmitter.fire(<TestRunStartedEvent> { type: 'started', tests: tests, testRunId })
                 this.finished = false
