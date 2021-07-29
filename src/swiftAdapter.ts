@@ -448,7 +448,6 @@ export class LLDBAdaptorTracker implements vscode.DebugAdapterTracker {
                 this.log.error(err)
             })
         }
-        this.log.debug(JSON.stringify(message))
     }
 
     onWillStopSession() {
