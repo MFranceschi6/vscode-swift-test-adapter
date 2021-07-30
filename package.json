@@ -89,8 +89,8 @@
         },
         "swiftTest.swift.preTestTask": {
           "description": "Task before run test",
-          "type": ["string", "null"],
-          "default": "null"
+          "type": ["string", null],
+          "default": null
         }
       }
     }
