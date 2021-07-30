@@ -9,8 +9,6 @@ import { parseSwiftLoadTestOutput, parseSwiftRunError, parseSwiftRunOutput } fro
 import { TargetInfo } from './TestSuiteParse';
 import { getPlatform, Platform } from './utils';
 import * as vscode from 'vscode';
-import { fileURLToPath } from 'url';
-import { FileHandle } from 'fs/promises';
 
 const basePath = 'swiftTest.swift'
 const open = fs.promises.open
