@@ -1,5 +1,5 @@
 import { ChildProcess, exec, spawn } from 'child_process';
-import { promises } from 'fs';
+import * as fs from 'fs';
 import { v4 } from 'uuid';
 import { debug, Event, EventEmitter, workspace, WorkspaceFolder } from 'vscode';
 import { RetireEvent, TestAdapter, TestDecoration, TestEvent, TestLoadFinishedEvent, TestLoadStartedEvent, TestRunFinishedEvent, TestRunStartedEvent, TestSuiteEvent, TestSuiteInfo } from 'vscode-test-adapter-api';
@@ -8,9 +8,10 @@ import { grep } from './fsUtils';
 import { parseSwiftLoadTestOutput, parseSwiftRunError, parseSwiftRunOutput } from './swiftUtils';
 import { TargetInfo } from './TestSuiteParse';
 import { getPlatform, Platform } from './utils';
+import * as vscode from 'vscode';
 
 const basePath = 'swiftTest.swift'
-const open = promises.open
+const open = fs.promises.open
 export class SwiftAdapter implements TestAdapter {
 
     private disposables: { dispose(): void }[] = [];
@@ -22,6 +23,7 @@ export class SwiftAdapter implements TestAdapter {
 	private readonly testStatesEmitter = new EventEmitter<TestRunStartedEvent | TestRunFinishedEvent | TestSuiteEvent | TestEvent>();
     private readonly autorunEmitter = new EventEmitter<void>();
     private readonly retireEmitter = new EventEmitter<RetireEvent>();
+    private preTestTask: string | null = null;
 
 
 	get tests(): Event<TestLoadStartedEvent | TestLoadFinishedEvent> { return this.testsEmitter.event; }
@@ -93,6 +95,7 @@ export class SwiftAdapter implements TestAdapter {
             '-l'
         ]
         args = args.concat(this.loadArgs())
+        this.preTestTask = workspace.getConfiguration(`${basePath}`).get<string | null>('preTestTask') || null
         const loadingProcess = spawn('swift', args, {cwd: this.workspace.uri.fsPath})
         const suite: TestSuiteInfo = {
             type: 'suite',
@@ -301,20 +304,36 @@ export class SwiftAdapter implements TestAdapter {
             const testRunId = v4()
             const packageName = JSON.parse(stdout)['name']
             try {
-                await promises.unlink(`${this.workspace.uri.fsPath}/.build/debug/${packageName}testRun`)
+                await fs.promises.unlink(`${this.workspace.uri.fsPath}/.build/debug/${packageName}testRun`)
             } catch { }
+            let program = ""
+            let args: string[] = []
+            const testBundlePath = `${this.workspace.uri.fsPath}/.build/debug/${packageName}PackageTests.xctest`
+            if (getPlatform() == Platform.mac) {
+                const developer = await this.spawnAsync("xcode-select", ['-p'])
+                // developer path will have a /n
+                program = `${developer.result.slice(0, -1)}/usr/bin/xctest`
+                args = ['-XCTest', tests[0], testBundlePath]
+            } else {
+                program = testBundlePath
+                args = [tests[0]]
+            }
+            const stdoutFilePath = `${this.workspace.uri.fsPath}/.build/debug/${packageName}testRun`
+            debug.registerDebugAdapterTrackerFactory("*", new LLDBAdaptorTrackerFactory(stdoutFilePath, this.log))
             debug.startDebugging(this.workspace, {
                 name: 'Debug Test',
                 request: 'launch',
                 type: 'lldb',
-                terminal: 'integrated',
-                stdio: [null, `${this.workspace.uri.fsPath}/.build/debug/${packageName}testRun`, getPlatform() == Platform.linux ? null : `${this.workspace.uri.fsPath}/.build/debug/${packageName}testRun`],
-                program: `${this.workspace.uri.fsPath}/.build/debug/${packageName}PackageTests.xctest`,
-                args: [tests[0]],
+                terminal: 'console',
+                stdio: [null, null, getPlatform() == Platform.linux ? null : `${this.workspace.uri.fsPath}/.build/debug/${packageName}testRun`],
+                program: program,
+                args: args,
+                preLaunchTask: this.preTestTask
             }).then(async () => {
                 this.testStatesEmitter.fire(<TestRunStartedEvent> { type: 'started', tests: tests, testRunId })
                 this.finished = false
                 debug.onDidTerminateDebugSession(async (e) => {
+                    e.configuration
                     this.finished = true
                     await this.parseOutput(testRunId, tests[0], packageName)
                 })
@@ -344,15 +363,34 @@ export class SwiftAdapter implements TestAdapter {
         await this.parseFileOutput(file, handler)
         this.testStatesEmitter.fire(<TestRunFinishedEvent> { type: 'finished', testRunId })
         await file.close()
-        await promises.unlink(`${this.workspace.uri.fsPath}/.build/debug/${packageName}testRun`)
+        await fs.promises.unlink(`${this.workspace.uri.fsPath}/.build/debug/${packageName}testRun`)
     }
 
-    private async parseFileOutput(file: promises.FileHandle, handler: (data: Buffer) => void) {
+    private async parseFileOutput(file: fs.promises.FileHandle, handler: (data: Buffer) => void) {
         const { bytesRead, buffer } = await file.read(Buffer.alloc(100), 0, 100)
         if(bytesRead != 0) {
             handler(buffer.slice(0, bytesRead))
             await this.parseFileOutput(file, handler)
         }
+    }
+
+    private async spawnAsync(command: string, args: string[]): Promise<{ code: number | null, result: string }> {
+        return new Promise((resolve, reject) => {
+            const spawnHandle = spawn(command, args)
+            let result: string
+            spawnHandle.stdout.on('data', (data: any) => {
+                if (result) {
+                    reject(Error('Helper function does not work for long lived proccess'))
+                }
+                result = data.toString()
+            })
+            spawnHandle.stderr.on('data', (error: any) => {
+                reject(Error(error.toString()))
+            })
+            spawnHandle.on('exit', code => {
+                resolve({ code, result })
+            })
+        })
     }
 
     cancel(): void {
@@ -370,4 +408,51 @@ export class SwiftAdapter implements TestAdapter {
 		this.disposables = [];
 	}
 
+}
+export class LLDBAdaptorTrackerFactory implements vscode.DebugAdapterTrackerFactory {
+    log: Log
+    path: string
+
+    constructor(path: string, log: Log) {
+        this.path = path
+        this.log = log
+    }
+    createDebugAdapterTracker(session: vscode.DebugSession): vscode.ProviderResult<vscode.DebugAdapterTracker> {
+        return new LLDBAdaptorTracker(
+            this.path,
+            this.log
+        )
+    }
+}
+export class LLDBAdaptorTracker implements vscode.DebugAdapterTracker {
+    path: string
+    log: Log
+    f: number | null
+
+    constructor(path: string, log: Log) {
+        this.log = log
+        this.path = path
+        this.f = null
+    }
+
+    onWillStartSession() {        
+        this.f = fs.openSync(this.path, 'a')
+    }
+
+    onDidSendMessage?(message: any) {
+        if (message.event == "output" && this.f != null) {
+            let output = message.body.output
+            fs.writeFile(this.f, output, (err) => {
+                this.log.error(err)
+            })
+        }
+    }
+
+    onWillStopSession() {
+        if (this.f != null) {
+            fs.close(this.f, (err) => {
+                this.log.error(err)
+            })
+        }
+    }
 }
