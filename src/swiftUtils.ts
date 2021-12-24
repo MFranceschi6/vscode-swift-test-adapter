@@ -262,6 +262,7 @@ export const parseSwiftLoadTestOutput = (debuggable: boolean, handlingData: {cou
     }
 })
 
+
 const parseFirstLine = (line: string): {info: string, file: string, line: number } => {
     const tokens = line.split(':')
     const info = tokens[tokens.length - 1].trim()
