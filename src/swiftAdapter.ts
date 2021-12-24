@@ -8,6 +8,7 @@ import { grep } from './fsUtils';
 import { parseSwiftLoadTestOutput, parseSwiftRunError, parseSwiftRunOutput } from './swiftUtils';
 import { TargetInfo } from './TestSuiteParse';
 import { getPlatform, Platform } from './utils';
+import { SwiftPackageManifestParser, SwiftPackageManifest, SwiftTarget } from './swiftPackage';
 
 const basePath = 'swiftTest.swift'
 const open = promises.open
@@ -86,7 +87,45 @@ export class SwiftAdapter implements TestAdapter {
         })
     }
 
+    private async loadPackageManifest(): Promise<null | SwiftPackageManifest> {
+        const path = this.workspace.uri.fsPath
+        
+        return new Promise<string>((resolve, reject) => {
+            exec("swift package dump-package", {cwd: path}, function (err, stdout, stderr) {
+                if (err != null) {
+                    throw err;
+                }
+                if (stderr != '') {
+                    reject()
+                }
+                
+                resolve(stdout.trim())
+            })
+        }).then((response) => {
+            return new Promise<SwiftPackageManifest>((resolve) => {
+                resolve(SwiftPackageManifestParser.toSwiftPackageManifest(response))
+            }).catch(() => { return null }); // If parsing of manifest fails, fail silently and fall back to heuristics for test paths; parsing might have failed because of unknown future Swift versions.
+        })
+    }
+
     private async loadSuite(): Promise<TestSuiteInfo> {
+        const suite: TestSuiteInfo = {
+            type: 'suite',
+            id: 'root',
+            label: 'Swift',
+            description: `${this.workspace.name}`,
+            tooltip: "All Tests",
+            debuggable: false,
+            children: []
+        }
+
+        let swiftPackage: SwiftPackageManifest | null
+        try {
+            swiftPackage = await this.loadPackageManifest()
+        } catch {
+            return Promise.resolve(suite)
+        }
+
         let args = [
             'test',
             '--enable-test-discovery',
@@ -94,15 +133,6 @@ export class SwiftAdapter implements TestAdapter {
         ]
         args = args.concat(this.loadArgs())
         const loadingProcess = spawn('swift', args, {cwd: this.workspace.uri.fsPath})
-        const suite: TestSuiteInfo = {
-            type: 'suite',
-            id: 'root',
-            label: 'Swift',
-            description: "Swift",
-            tooltip: "All Tests",
-            debuggable: false,
-            children: []
-        }
 
         const packages: { [key: string]: TargetInfo | undefined } = {};
         const stderr: string[] = []
@@ -117,13 +147,40 @@ export class SwiftAdapter implements TestAdapter {
                     return;
                 }
                 this.awaitForOutputHandling(handlingData).then(() => {
+                    var packageTargetDict: { [key: string]: SwiftTarget } = {}
+                    if (swiftPackage?.targets != null) {
+                        for (const target of swiftPackage.targets) {
+                            packageTargetDict[target.name] = target
+                        }
+                    }
+                    
                     const children = Object.keys(packages).map(targetName => {
+                        const targetInPackage = packageTargetDict[targetName]
+                        const targetPath = targetInPackage?.path
                         const target = packages[targetName] as TargetInfo
+                        
                         const children = Object.keys(target.childrens).map(className => {
+                            var searchDirectories: string[] = [
+                                `${this.workspace.uri.fsPath}/Tests/${targetName}`,
+                                `${this.workspace.uri.fsPath}/Sources/${targetName}`,
+                            ]
+                            if (targetPath != null) {
+                                const declaredPath = `${this.workspace.uri.fsPath}/${targetPath}`
+
+                                if (searchDirectories.indexOf(declaredPath) == -1) {
+                                    searchDirectories.unshift(`${this.workspace.uri.fsPath}/${targetPath}`)
+                                }
+                            }
+
                             const classDef = target.childrens[className]
                             const regex = `class[\\s]+${className}[\\s]*:.*{`
-                            return grep(RegExp(regex), `${this.workspace.uri.fsPath}/Tests/${targetName}`, true, true)
-                            .catch(() => grep(RegExp(regex), `${this.workspace.uri.fsPath}/Sources/${targetName}`, true, true))
+
+                            const grepCalls = searchDirectories.map((path) => {
+                                return () => grep(RegExp(regex), path, true, true)
+                            })
+                            
+                            return grepCalls
+                            .reduce((p, fn) => p.catch(fn), new Promise<string[]>((_, reject) => { reject() }))
                             .then(results => {
                                 const lines = results[0].split(':')
                                 const fileName = lines[0]
@@ -145,6 +202,7 @@ export class SwiftAdapter implements TestAdapter {
                                 return null
                             })
                         })
+                        
                         return Promise.all(children).then(childrens => {
                                 const children = childrens.filter(child => child != null)
                                 if (children.length != 0) {
@@ -161,6 +219,7 @@ export class SwiftAdapter implements TestAdapter {
                                 return null
                         })
                     })
+
                     Promise.all(children).then(children => {
                         const child = children.filter(child => child != null) as TestSuiteInfo[]
                         suite.children = child
